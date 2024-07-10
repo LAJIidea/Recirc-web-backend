@@ -2,10 +2,15 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppGateway } from "./app.gateway";
-import { MinioModule } from "./minio.module";
+import { MinioModule } from "./minio/minio.module";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { typerOrmConfig } from "./config/typeorm.config";
 
 @Module({
-  imports: [MinioModule],
+  imports: [
+    TypeOrmModule.forRoot(typerOrmConfig),
+    MinioModule
+  ],
   controllers: [AppController],
   providers: [AppService, AppGateway],
 })

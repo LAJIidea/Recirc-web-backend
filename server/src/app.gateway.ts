@@ -1,7 +1,7 @@
 import { SubscribeMessage, WebSocketGateway, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from "@nestjs/websockets";
 import { Logger } from "@nestjs/common";
 import { Socket, Server } from "socket.io";
-import { MinioService } from "./minio.service";
+import { MinioService } from "./minio/minio.service";
 
 @WebSocketGateway({
   cors: {
