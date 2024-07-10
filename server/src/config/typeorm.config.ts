@@ -5,7 +5,8 @@ import { Sandbox } from "../sandbox/sandbox.entity";
 
 export const typerOrmConfig: TypeOrmModuleOptions = {
   type: 'mysql',
-  host: '10.3.1.200',
+  // host: '10.3.1.200',
+  host: '127.0.0.1',
   port: 3306,
   username: 'root',
   password: 'root1234',

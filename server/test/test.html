@@ -8,7 +8,7 @@
 </head>
 <body>
   <script>
-    const socket = io('http://localhost:3000');
+    const socket = io('http://localhost:3000?userId=01&sandboxId=01');
     socket.on('connect', () => {
       console.log('Connected to server');
       socket.emit('message', 'Hello, Server!');
