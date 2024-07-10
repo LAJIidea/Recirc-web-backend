@@ -2,7 +2,7 @@ import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
 import { UserService } from './user.service';
 import { User } from './user.entity';
 
-@Controller('users')
+@Controller('/users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
@@ -11,7 +11,7 @@ export class UserController {
     return this.userService.findAll();
   }
 
-  @Get(':id')
+  @Get()
   findOne(@Param('id') id: string): Promise<User> {
     return this.userService.findOne(id);
   }

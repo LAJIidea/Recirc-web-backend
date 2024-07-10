@@ -11,7 +11,7 @@ export class SandboxController {
     return this.sandboxService.findAll();
   }
 
-  @Get(':id')
+  @Get()
   findOne(@Param('id') id: string): Promise<Sandbox> {
     return this.sandboxService.findOne(id);
   }
