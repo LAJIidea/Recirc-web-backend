@@ -18,4 +18,18 @@ export class MinioController {
     await this.minioService.downloadFile(bucketName, fileName, downloadPath);
     return { message: 'File downloaded successfully', path: downloadPath };
   }
+
+
+  @Post('push')
+  async pushObject(@Body() body: { bucketName: string; objName: string; obj: string }) {
+    const { bucketName, objName, obj } = body;
+    await this.minioService.pushObject(bucketName, objName, obj);
+    return { message: 'Push object successfully' };
+  }
+
+  @Get('get')
+  async getObject(@Query('bucketName') bucketName: string, @Query('objName') objName: string) {
+    let data = await this.minioService.getObject(bucketName, objName);
+    return { message: 'File downloaded successfully', content: data };
+  }
 }

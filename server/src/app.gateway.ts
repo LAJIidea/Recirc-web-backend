@@ -8,6 +8,7 @@ import { SandboxService } from "./sandbox/sandbox.service";
 import { Sandbox, Terminal, FilesystemManager } from "e2b";
 import { LockManager } from "./utils/utils";
 import path from "path";
+import { ComposeFilesData } from "./minio/types";
 
 let inactivityTimeout: NodeJS.Timeout | null = null;
 let isOwnerConnected = false;
@@ -15,6 +16,7 @@ let isOwnerConnected = false;
 const containers: Record<string, Sandbox> = {}
 const connections: Record<string, number> = {}
 const terminals: Record<string, Terminal> = {}
+const composes: Record<string, ComposeFilesData> = {}
 
 const lockManager = new LockManager();
 
@@ -55,6 +57,14 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
     const downloadPath = `./downloads/${fileName}`;
     await this.minioService.downloadFile(bucketName, fileName, downloadPath);
     client.emit('downloadFileResponse', { message: 'File downloaded successfully', path: downloadPath });
+  }
+
+  async handlerGetFile(client: Socket, fileId: string): Promise<string> {
+    // console.log(fileId);
+    // try {
+    //   const file = sand
+    // }
+    return ""
   }
 
   async handleConnection(client: Socket, ...args: any[]) {
@@ -128,7 +138,18 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
       );
     };
 
-    // const sandboxFiles = await getSandboxFiles(sandboxId);
+    const sandboxFiles = await this.minioService.getSandboxFiles(sandboxId);
+    sandboxFiles.fileData.forEach(async (file) => {
+      const filePath = path.join(dirName, file.id);
+      await containers[sandboxId].filesystem.makeDir(
+        path.dirname(filePath)
+      );
+      await containers[sandboxId].filesystem.write(filePath, file.data);
+    });
+    fixPermissions();
+
+    composes[sandboxId] = sandboxFiles;
+    client.emit("loaded", sandboxFiles.files);
   }
 
   handleDisconnect(client: any) {

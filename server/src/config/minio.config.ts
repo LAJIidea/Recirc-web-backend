@@ -5,4 +5,5 @@ export const minioConfig = {
   useSSL: false,
   accessKey: 'root',
   secretKey: 'root1234',
+  bucketName: 'recirc'
 };
