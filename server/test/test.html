@@ -21,6 +21,10 @@
     socket.on('disconnect', () => {
       console.log('Disconnected from server');
     });
+
+    socket.emit('callback', "111", (response) => {
+      console.log(response)
+    })
   </script>
 </body>
 </html>

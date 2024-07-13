@@ -8,7 +8,8 @@ import { SandboxService } from "./sandbox/sandbox.service";
 import { Sandbox, Terminal, FilesystemManager } from "e2b";
 import { LockManager } from "./utils/utils";
 import path from "path";
-import { ComposeFilesData } from "./minio/types";
+import { ComposeFilesData, MinIOFiles } from "./minio/types";
+import { MAX_BODY_SIZE, saveFileRL } from "./config/ratelimit";
 
 let inactivityTimeout: NodeJS.Timeout | null = null;
 let isOwnerConnected = false;
@@ -59,12 +60,60 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
     client.emit('downloadFileResponse', { message: 'File downloaded successfully', path: downloadPath });
   }
 
-  async handlerGetFile(client: Socket, fileId: string): Promise<string> {
-    // console.log(fileId);
-    // try {
-    //   const file = sand
-    // }
-    return ""
+  @SubscribeMessage('getFile')
+  handlerGetFile(client: Socket, fileId: string): string {
+    console.log(fileId);
+    try {
+      const data = client.data as {
+        userId: string;
+        sandboxId: string;
+        isOwner: boolean;
+      }
+      const file = composes[data.sandboxId].fileData.find((f) => f.id === fileId);
+      if (!file) return "null";
+
+      return file.data;
+    } catch (e: any) {
+      console.error("Error getting file: ", e);
+      client.emit("error", `Error: get file. ${e.message ?? e}`); 
+    }
+  }
+
+  async handlerGetFolder(client: Socket, folderId: string) : Promise<string[]> {
+    try {
+      const files = await this.minioService.getFolder(folderId)
+      return files;
+    } catch (e: any) {
+      console.error("Error getting folder: ", e);
+      client.emit("error", `Error: get folder. ${e.message ?? e}`)
+    }
+  }
+
+  // todo: send diffs + debounce for efficiency
+  async handerSaveFile(client: Socket, fileId: string, body: string) {
+    if (!fileId) return;
+
+    try {
+      const data = client.data as {
+        userId: string;
+        sandboxId: string;
+        isOwner: boolean;
+      }
+      if (Buffer.byteLength(body, "utf-8") > MAX_BODY_SIZE) {
+        this.server.emit(
+          "error",
+          "Error: file size too large. Please reduce the file size."
+        );
+        return;
+      }
+      try {
+        await saveFileRL.consume(data.userId, 1);
+      } catch (e) {
+        
+      }
+    } catch (e) {
+      
+    }
   }
 
   async handleConnection(client: Socket, ...args: any[]) {
@@ -131,13 +180,6 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
       }
     });
 
-    // Change the owner of the project directory to user
-    const fixPermissions = async () => {
-      await containers[sandboxId].process.startAndWait(
-        `sudo chown -R user "${path.join(dirName, "projects", sandboxId)}"`
-      );
-    };
-
     const sandboxFiles = await this.minioService.getSandboxFiles(sandboxId);
     sandboxFiles.fileData.forEach(async (file) => {
       const filePath = path.join(dirName, file.id);
@@ -146,7 +188,7 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
       );
       await containers[sandboxId].filesystem.write(filePath, file.data);
     });
-    fixPermissions();
+    this.fixPermissions(sandboxId);
 
     composes[sandboxId] = sandboxFiles;
     client.emit("loaded", sandboxFiles.files);
@@ -159,4 +201,11 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   afterInit(server: any) {
       
   }
+
+  // Change the owner of the project directory to user
+  fixPermissions = async (sandboxId) => {
+    await containers[sandboxId].process.startAndWait(
+      `sudo chown -R user "${path.join(dirName, "projects", sandboxId)}"`
+    );
+  };
 }

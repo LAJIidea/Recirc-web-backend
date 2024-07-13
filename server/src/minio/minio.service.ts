@@ -140,6 +140,13 @@ export class MinioService {
     }
   }
   
+  getFolder = async (folderId: string) => {
+    const res = await this.getObject(minioConfig.bucketName, folderId);
+    const data: MinIOFiles = JSON.parse(res);
+
+    return data.objects.map((obj) => obj.key);
+  }
+
   fetchFileContent = async (fileId: string): Promise<string> => {
     try {
       const data = await this.getObject(minioConfig.bucketName, fileId);
