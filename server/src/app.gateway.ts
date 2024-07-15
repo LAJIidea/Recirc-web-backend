@@ -9,7 +9,8 @@ import { Sandbox, Terminal, FilesystemManager } from "e2b";
 import { LockManager } from "./utils/utils";
 import path from "path";
 import { ComposeFilesData, MinIOFiles } from "./minio/types";
-import { MAX_BODY_SIZE, saveFileRL } from "./config/ratelimit";
+import { createFileRL, MAX_BODY_SIZE, saveFileRL } from "./config/ratelimit";
+import e from "express";
 
 let inactivityTimeout: NodeJS.Timeout | null = null;
 let isOwnerConnected = false;
@@ -79,6 +80,7 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
     }
   }
 
+  @SubscribeMessage('getFolder')
   async handlerGetFolder(client: Socket, folderId: string) : Promise<string[]> {
     try {
       const files = await this.minioService.getFolder(folderId)
@@ -90,6 +92,7 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   }
 
   // todo: send diffs + debounce for efficiency
+  @SubscribeMessage('saveFile')
   async handerSaveFile(client: Socket, fileId: string, body: string) {
     if (!fileId) return;
 
@@ -108,13 +111,114 @@ export class AppGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
       }
       try {
         await saveFileRL.consume(data.userId, 1);
+        await this.minioService.saveFile(fileId, body);
       } catch (e) {
-        
+        client.emit("error", "Rate limited: file saving. Please slow donw");
+        const file = composes[data.sandboxId].fileData.find((f) => f.id === fileId);
+        if (!file) return;
+
+        await containers[data.sandboxId].filesystem.write(
+          path.join(dirName, file.id),
+          body
+        );
+        this.fixPermissions(data.sandboxId);
       }
     } catch (e) {
-      
+      console.error("Error saving file: ", e);
+      client.emit("error", `Error: file saving. ${e.message ?? e}`);
     }
   }
+
+  @SubscribeMessage('moveFile')
+  async moveFile(client: Socket, fileId: string, folderId: string) {
+    try {
+      const data = client.data as {
+        userId: string;
+        sandboxId: string;
+        isOwner: boolean;
+      }
+      const file = composes[data.sandboxId].fileData.find((f) => f.id == fileId)
+      if (!file) return;
+
+      const parts = fileId.split("/");
+      const newFileId = folderId + "/" + parts.pop();
+
+      await this.fileSystemMoveFile(
+        containers[data.sandboxId].filesystem,
+        path.join(dirName, fileId),
+        path.join(dirName, newFileId)
+      );
+      this.fixPermissions(data.sandboxId);
+
+      file.id = newFileId;
+
+      await this.minioService.renameFile(fileId, newFileId, file.data);
+      const newFiles = await this.minioService.getSandboxFiles(data.sandboxId);
+      return newFiles.files;
+    } catch (e: any) {
+      console.error("Error moving file: ", e);
+      client.emit("error", `Error: file moving. ${e.message ?? e}`);
+    }
+  }
+
+  @SubscribeMessage('createFile')
+  async createFile(client: Socket, name: string) {
+    try {
+      const data = client.data as {
+        userId: string;
+        sandboxId: string;
+        isOwner: boolean;
+      }
+      const size: number = await this.minioService.getProjectSize(data.sandboxId);
+      if (size > 200 * 1024 * 1024) {
+        client.emit(
+          "error",
+          "Rate limited: project size exceeded. Please delete some files."
+        );
+        return {success: false};
+      }
+
+      try {
+        await createFileRL.consume(data.userId, 1);
+      } catch (e) {
+        client.emit("error", "Rate limited: file creation. Please slow down.");
+      }
+
+      const id = `projects/${data.sandboxId}/${name}`;
+
+      await containers[data.sandboxId].filesystem.write(
+        path.join(dirName, id),
+        ""
+      );
+      this.fixPermissions(data.sandboxId);
+
+      composes[data.sandboxId].files.push({
+        id,
+        name,
+        type: "file"
+      });
+
+      composes[data.sandboxId].fileData.push({
+        id,
+        data: ""
+      });
+
+      return {success: true};
+    } catch (error) {
+      console.error("Error creating file", error);
+      client.emit("error", `Error: file creation. ${error.message ?? error}`)
+    }
+  }
+
+  fileSystemMoveFile = async (
+    filesystem: FilesystemManager,
+    filePath: string,
+    newFilePath: string
+  ) => {
+    const fileContents = await filesystem.readBytes(filePath);
+    await filesystem.writeBytes(newFilePath, fileContents);
+    await filesystem.remove(filePath);
+  };
 
   async handleConnection(client: Socket, ...args: any[]) {
     const handshakeSchema = z.object({

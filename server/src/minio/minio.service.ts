@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import * as Minio from 'minio';
 import { minioConfig } from "../config/minio.config";
 import {
+  MinIOFileData,
   MinIOFiles,
   TFile,
   TFileData,
@@ -156,4 +157,47 @@ export class MinioService {
       return "";
     }
   };
+
+  saveFile = async (fileId: string, data: string) => {
+    try {
+      const res = await this.minioClient.putObject(minioConfig.bucketName, fileId, data); 
+    } catch (error) {
+      console.error("error: ", error);
+      throw error;
+    }
+  }
+
+  renameFile = async (
+    fileId: string,
+    newFile: string,
+    data: string
+  ) => {
+    try {
+      // copy file
+      await this.minioClient.copyObject(
+        minioConfig.bucketName,
+        newFile,
+        `${minioConfig.bucketName}/${fileId}`
+      );
+
+      // delete old file
+      await this.minioClient.removeObject(minioConfig.bucketName, fileId);
+    } catch (error) {
+      console.error("error: ", error)
+      throw error;
+    }
+  }
+
+  getProjectSize = async (id: string) => {
+    const res = await this.getObject(minioConfig.bucketName, id);
+    return (JSON.parse(res) as MinIOFileData).size
+  }
+
+  createFile = async (fileId: string) => {
+    try {
+      await this.pushObject(minioConfig.bucketName, fileId, "");
+    } catch (e) {
+      
+    }
+  }
 }
